@@ -18,14 +18,17 @@ Panel {
   // ----------------------------------------------------------------- Settings
   readonly property string configuredUsername: setting("username", "")
   property string currentUsername: configuredUsername
-  readonly property int panelWidth: setting("panelWidth", 380)
+  readonly property int panelWidth: setting("panelWidth", 390)
   readonly property bool showPuzzle: setting("showPuzzle", true)
-  readonly property int pollMinutes: setting("pollMinutes", 10)
+  readonly property int pollMinutes: setting("pollMinutes", 3)
 
   // -------------------------------------------------------------------- State
   property var playerData: null
   property var statsData: null
   property var puzzleData: null
+  property var activeGames: []
+  property var toMoveGames: []
+  property int toMoveCount: 0
   property bool loading: false
   property string errorMessage: ""
   property bool editingUser: false
@@ -46,15 +49,28 @@ Panel {
         }
         playerData = player
         Model.fetchStats(targetUser, function(errStats, stats) {
+          if (!errStats) statsData = stats
+        })
+        Model.fetchActiveGames(targetUser, function(errGames, res) {
           loading = false
-          if (!errStats) {
-            statsData = stats
+          if (!errGames && res && Array.isArray(res.games)) {
+            var parsedList = []
+            var count = 0
+            for (var i = 0; i < res.games.length; i++) {
+              var parsed = Model.parseOpponent(res.games[i], targetUser)
+              parsedList.push(parsed)
+              if (parsed.isMyTurn) count++
+            }
+            root.activeGames = parsedList
+            root.toMoveCount = count
           }
         })
       })
     } else {
       playerData = null
       statsData = null
+      activeGames = []
+      toMoveCount = 0
       loading = false
     }
 
@@ -67,13 +83,7 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
-      if (!playerData && currentUsername !== "") {
-        refreshAll()
-      } else if (showPuzzle && !puzzleData) {
-        Model.fetchPuzzle(function(err, pz) {
-          if (!err) puzzleData = pz
-        })
-      }
+      refreshAll()
     }
   }
 
@@ -88,7 +98,7 @@ Panel {
   }
 
   Timer {
-    interval: Math.max(2, root.pollMinutes) * 60 * 1000
+    interval: Math.max(1, root.pollMinutes) * 60 * 1000
     running: true
     repeat: true
     onTriggered: if (root.currentUsername !== "") root.refreshAll()
@@ -122,11 +132,16 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰡲"
+    text: root.toMoveCount > 0 ? "󰡲 " + root.toMoveCount : "󰡲"
     horizontalMargin: 6
-    tooltipText: root.playerData && root.playerData.username 
-      ? "Chess.com (" + root.playerData.username + ")" 
-      : "Chess.com"
+    active: root.toMoveCount > 0
+    activeColor: root.accent
+    tooltipText: {
+      var base = root.playerData && root.playerData.username ? "Chess.com (" + root.playerData.username + ")" : "Chess.com"
+      if (root.toMoveCount > 0) return base + " — " + root.toMoveCount + " move(s) to play!"
+      if (root.activeGames.length > 0) return base + " — " + root.activeGames.length + " active games (waiting on opponent)"
+      return base
+    }
 
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.RightButton) {
@@ -166,7 +181,7 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             Text {
               text: "󰡲"
-              color: root.accent
+              color: root.toMoveCount > 0 ? root.accent : root.foreground
               font.pixelSize: Style.font.title
               font.family: root.fontFamily
             }
@@ -228,7 +243,7 @@ Panel {
         border.width: 1
         border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
 
-        // Editing / No User Mode
+        // Editing Mode
         Row {
           visible: root.editingUser || !root.playerData
           anchors.fill: parent
@@ -306,7 +321,6 @@ Panel {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(10)
 
-            // Avatar
             Rectangle {
               width: Style.space(40)
               height: Style.space(40)
@@ -330,7 +344,6 @@ Panel {
               }
             }
 
-            // Names & Title
             Column {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(2)
@@ -372,7 +385,6 @@ Panel {
             }
           }
 
-          // Edit button
           Rectangle {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -400,7 +412,119 @@ Panel {
         }
       }
 
-      // Stats Grid (Rapid, Blitz, Bullet, Puzzles)
+      // ------------------------------------------------ Active Games Section
+      Column {
+        visible: root.activeGames.length > 0
+        width: parent.width
+        spacing: Style.space(6)
+
+        Row {
+          spacing: Style.space(6)
+          Text {
+            text: root.toMoveCount > 0 ? "⚡ YOUR TURN TO PLAY (" + root.toMoveCount + ")" : "⏳ ACTIVE DAILY GAMES (" + root.activeGames.length + ")"
+            color: root.toMoveCount > 0 ? root.accent : Qt.darker(root.foreground, 1.4)
+            font.bold: true
+            font.pixelSize: Style.font.caption
+            font.letterSpacing: 1
+            font.family: root.fontFamily
+          }
+        }
+
+        Repeater {
+          model: root.activeGames
+
+          Rectangle {
+            required property var modelData
+            required property int index
+            width: parent.width
+            height: Style.space(42)
+            radius: Style.cornerRadius
+            color: modelData.isMyTurn 
+              ? (gameArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12))
+              : (gameArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.04))
+            border.width: 1
+            border.color: modelData.isMyTurn ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
+
+            Row {
+              anchors.fill: parent
+              anchors.margins: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(10)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: modelData.amWhite ? "⚪" : "⚫"
+                font.pixelSize: Style.font.body
+              }
+
+              Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(1)
+
+                Row {
+                  spacing: Style.space(6)
+                  Text {
+                    text: "vs " + modelData.opponent
+                    color: root.foreground
+                    font.bold: true
+                    font.pixelSize: Style.font.bodySmall
+                    font.family: root.fontFamily
+                  }
+                  Rectangle {
+                    visible: modelData.isMyTurn
+                    width: turnBadge.implicitWidth + Style.space(8)
+                    height: Style.space(16)
+                    radius: Style.space(3)
+                    color: root.accent
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                      id: turnBadge
+                      anchors.centerIn: parent
+                      text: "YOUR TURN"
+                      color: Color.background
+                      font.bold: true
+                      font.pixelSize: Style.font.caption
+                    }
+                  }
+                }
+
+                Text {
+                  text: modelData.isMyTurn ? ("Move within: " + modelData.timeLeft) : ("Opponent thinking (" + modelData.timeLeft + " left)")
+                  color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.6)
+                  font.pixelSize: Style.font.caption
+                  font.family: root.fontFamily
+                }
+              }
+
+              Item {
+                Layout.fillWidth: true
+                width: parent.width - 240
+                height: 1
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.right: parent.right
+                text: modelData.isMyTurn ? "Play 󰐊" : "View 󰒭"
+                color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.5)
+                font.bold: modelData.isMyTurn
+                font.pixelSize: Style.font.bodySmall
+                font.family: root.fontFamily
+              }
+            }
+
+            MouseArea {
+              id: gameArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.launchUrl(modelData.url)
+            }
+          }
+        }
+      }
+
+      // ------------------------------------------------ Stats Grid
       Grid {
         visible: !!root.statsData
         width: parent.width
@@ -410,7 +534,7 @@ Panel {
         // Rapid Card
         Rectangle {
           width: (parent.width - Style.space(8)) / 2
-          height: Style.space(64)
+          height: Style.space(60)
           radius: Style.cornerRadius
           color: rapidArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
           border.width: 1
@@ -458,12 +582,12 @@ Panel {
           }
         }
 
-        // Blitz Card
+        // Daily Card
         Rectangle {
           width: (parent.width - Style.space(8)) / 2
-          height: Style.space(64)
+          height: Style.space(60)
           radius: Style.cornerRadius
-          color: blitzArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
+          color: dailyArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
           border.width: 1
           border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
 
@@ -473,9 +597,9 @@ Panel {
             Row {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(4)
-              Text { text: "⚡"; font.pixelSize: Style.font.bodySmall }
+              Text { text: "📅"; font.pixelSize: Style.font.bodySmall }
               Text {
-                text: "BLITZ"
+                text: "DAILY"
                 color: Qt.darker(root.foreground, 1.4)
                 font.pixelSize: Style.font.caption
                 font.bold: true
@@ -485,7 +609,7 @@ Panel {
             }
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: Model.formatRating(root.statsData && root.statsData.chess_blitz && root.statsData.chess_blitz.last ? root.statsData.chess_blitz.last.rating : null)
+              text: Model.formatRating(root.statsData && root.statsData.chess_daily && root.statsData.chess_daily.last ? root.statsData.chess_daily.last.rating : null)
               color: root.foreground
               font.bold: true
               font.pixelSize: Style.font.title
@@ -493,7 +617,7 @@ Panel {
             }
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
-              text: Model.formatRecord(root.statsData && root.statsData.chess_blitz ? root.statsData.chess_blitz.record : null)
+              text: Model.formatRecord(root.statsData && root.statsData.chess_daily ? root.statsData.chess_daily.record : null)
               color: Qt.darker(root.foreground, 1.6)
               font.pixelSize: Style.font.caption
               font.family: root.fontFamily
@@ -501,122 +625,20 @@ Panel {
           }
 
           MouseArea {
-            id: blitzArea
+            id: dailyArea
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.launchUrl("https://www.chess.com/play/online/new?time=180")
-          }
-        }
-
-        // Bullet Card
-        Rectangle {
-          width: (parent.width - Style.space(8)) / 2
-          height: Style.space(64)
-          radius: Style.cornerRadius
-          color: bulletArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
-          border.width: 1
-          border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
-
-          Column {
-            anchors.centerIn: parent
-            spacing: Style.space(2)
-            Row {
-              anchors.horizontalCenter: parent.horizontalCenter
-              spacing: Style.space(4)
-              Text { text: "🎯"; font.pixelSize: Style.font.bodySmall }
-              Text {
-                text: "BULLET"
-                color: Qt.darker(root.foreground, 1.4)
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                font.letterSpacing: 1
-                font.family: root.fontFamily
-              }
-            }
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              text: Model.formatRating(root.statsData && root.statsData.chess_bullet && root.statsData.chess_bullet.last ? root.statsData.chess_bullet.last.rating : null)
-              color: root.foreground
-              font.bold: true
-              font.pixelSize: Style.font.title
-              font.family: root.fontFamily
-            }
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              text: Model.formatRecord(root.statsData && root.statsData.chess_bullet ? root.statsData.chess_bullet.record : null)
-              color: Qt.darker(root.foreground, 1.6)
-              font.pixelSize: Style.font.caption
-              font.family: root.fontFamily
-            }
-          }
-
-          MouseArea {
-            id: bulletArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.launchUrl("https://www.chess.com/play/online/new?time=60")
-          }
-        }
-
-        // Puzzles / Daily Card
-        Rectangle {
-          width: (parent.width - Style.space(8)) / 2
-          height: Style.space(64)
-          radius: Style.cornerRadius
-          color: puzzlesArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
-          border.width: 1
-          border.color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
-
-          Column {
-            anchors.centerIn: parent
-            spacing: Style.space(2)
-            Row {
-              anchors.horizontalCenter: parent.horizontalCenter
-              spacing: Style.space(4)
-              Text { text: "🧩"; font.pixelSize: Style.font.bodySmall }
-              Text {
-                text: "TACTICS"
-                color: Qt.darker(root.foreground, 1.4)
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                font.letterSpacing: 1
-                font.family: root.fontFamily
-              }
-            }
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              text: Model.formatRating(root.statsData && root.statsData.tactics && root.statsData.tactics.highest ? root.statsData.tactics.highest.rating : (root.statsData && root.statsData.chess_daily && root.statsData.chess_daily.last ? root.statsData.chess_daily.last.rating : null))
-              color: root.foreground
-              font.bold: true
-              font.pixelSize: Style.font.title
-              font.family: root.fontFamily
-            }
-            Text {
-              anchors.horizontalCenter: parent.horizontalCenter
-              text: "Puzzles Rating"
-              color: Qt.darker(root.foreground, 1.6)
-              font.pixelSize: Style.font.caption
-              font.family: root.fontFamily
-            }
-          }
-
-          MouseArea {
-            id: puzzlesArea
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.launchUrl("https://www.chess.com/puzzles")
+            onClicked: root.launchUrl("https://www.chess.com/play/daily")
           }
         }
       }
 
-      // Daily Puzzle Banner
+      // ------------------------------------------------ Daily Puzzle Banner
       Rectangle {
         visible: root.showPuzzle && !!root.puzzleData
         width: parent.width
-        height: Style.space(64)
+        height: Style.space(56)
         radius: Style.cornerRadius
         color: puzzleArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
         border.width: 1
@@ -624,13 +646,12 @@ Panel {
 
         Row {
           anchors.fill: parent
-          anchors.margins: Style.space(8)
-          spacing: Style.space(12)
+          anchors.margins: Style.space(6)
+          spacing: Style.space(10)
 
-          // Mini Board Preview
           Rectangle {
-            width: Style.space(48)
-            height: Style.space(48)
+            width: Style.space(44)
+            height: Style.space(44)
             radius: Math.max(2, Style.cornerRadius - 2)
             color: "#272522"
             clip: true
@@ -644,7 +665,7 @@ Panel {
 
           Column {
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
+            spacing: Style.space(1)
 
             Row {
               spacing: Style.space(4)
@@ -663,10 +684,9 @@ Panel {
               text: root.puzzleData && root.puzzleData.title ? root.puzzleData.title : "Daily Tactic"
               color: root.foreground
               font.bold: true
-              font.pixelSize: Style.font.body
+              font.pixelSize: Style.font.bodySmall
               font.family: root.fontFamily
               elide: Text.ElideRight
-              width: parent.width
             }
 
             Text {
@@ -692,10 +712,9 @@ Panel {
         width: parent.width
         spacing: Style.space(6)
 
-        // 3m Blitz
         Rectangle {
           width: (parent.width - Style.space(18)) / 4
-          height: Style.space(32)
+          height: Style.space(30)
           radius: Style.cornerRadius
           color: btn3mArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
           border.width: 1
@@ -719,10 +738,9 @@ Panel {
           }
         }
 
-        // 10m Rapid
         Rectangle {
           width: (parent.width - Style.space(18)) / 4
-          height: Style.space(32)
+          height: Style.space(30)
           radius: Style.cornerRadius
           color: btn10mArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
           border.width: 1
@@ -746,10 +764,9 @@ Panel {
           }
         }
 
-        // Puzzles
         Rectangle {
           width: (parent.width - Style.space(18)) / 4
-          height: Style.space(32)
+          height: Style.space(30)
           radius: Style.cornerRadius
           color: btnPzArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
           border.width: 1
@@ -773,10 +790,9 @@ Panel {
           }
         }
 
-        // vs Computer
         Rectangle {
           width: (parent.width - Style.space(18)) / 4
-          height: Style.space(32)
+          height: Style.space(30)
           radius: Style.cornerRadius
           color: btnBotsArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.05)
           border.width: 1

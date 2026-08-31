@@ -51,8 +51,65 @@ function fetchStats(username, callback) {
   fetchJson("https://api.chess.com/pub/player/" + encodeURIComponent(clean) + "/stats", callback)
 }
 
+function fetchActiveGames(username, callback) {
+  var clean = String(username || "").trim().toLowerCase()
+  if (!clean) {
+    callback(new Error("No username provided"), null)
+    return
+  }
+  fetchJson("https://api.chess.com/pub/player/" + encodeURIComponent(clean) + "/games", callback)
+}
+
+function fetchToMoveGames(username, callback) {
+  var clean = String(username || "").trim().toLowerCase()
+  if (!clean) {
+    callback(new Error("No username provided"), null)
+    return
+  }
+  fetchJson("https://api.chess.com/pub/player/" + encodeURIComponent(clean) + "/games/to-move", callback)
+}
+
 function fetchPuzzle(callback) {
   fetchJson("https://api.chess.com/pub/puzzle", callback)
+}
+
+function parseOpponent(game, myUsername) {
+  if (!game) return { name: "Opponent", isWhite: false, isMyTurn: false, timeLeft: "" }
+  var me = String(myUsername || "").toLowerCase()
+  var whiteUrl = String(game.white || "").toLowerCase()
+  var blackUrl = String(game.black || "").toLowerCase()
+  
+  var amWhite = whiteUrl.indexOf("/" + me) >= 0 || whiteUrl.endsWith("/" + me)
+  var oppUrl = amWhite ? game.black : game.white
+  var oppName = oppUrl ? oppUrl.split("/").pop() : "Opponent"
+  
+  var isMyTurn = (amWhite && game.turn === "white") || (!amWhite && game.turn === "black")
+  
+  var timeLeft = ""
+  if (game.move_by) {
+    var nowSec = Math.floor(Date.now() / 1000)
+    var diffSec = game.move_by - nowSec
+    if (diffSec > 86400) {
+      var days = Math.floor(diffSec / 86400)
+      var hrs = Math.floor((diffSec % 86400) / 3600)
+      timeLeft = days + "d " + hrs + "h"
+    } else if (diffSec > 0) {
+      var h = Math.floor(diffSec / 3600)
+      var m = Math.floor((diffSec % 3600) / 60)
+      timeLeft = h + "h " + m + "m"
+    } else {
+      timeLeft = "0h 0m"
+    }
+  }
+  
+  return {
+    opponent: oppName,
+    amWhite: amWhite,
+    isMyTurn: isMyTurn,
+    timeLeft: timeLeft,
+    url: game.url,
+    fen: game.fen || ""
+  }
 }
 
 function formatRating(val) {
@@ -66,14 +123,4 @@ function formatRecord(record) {
   var l = record.loss || 0
   var d = record.draw || 0
   return w + "W " + l + "L " + d + "D"
-}
-
-function winRate(record) {
-  if (!record) return ""
-  var w = record.win || 0
-  var l = record.loss || 0
-  var d = record.draw || 0
-  var total = w + l + d
-  if (total === 0) return ""
-  return Math.round((w / total) * 100) + "%"
 }
