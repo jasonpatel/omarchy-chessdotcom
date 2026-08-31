@@ -13,7 +13,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰡲"
+    text: "󰡳"
     horizontalMargin: 6
     tooltipText: "Chess.com"
     onPressed: function(mouseButton) {

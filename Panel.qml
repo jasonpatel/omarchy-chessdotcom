@@ -131,7 +131,7 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.toMoveCount > 0 ? "󰡲 " + root.toMoveCount : "󰡲"
+    text: root.toMoveCount > 0 ? "󰡳 " + root.toMoveCount : "󰡳"
     horizontalMargin: 6
     active: root.toMoveCount > 0
     activeColor: root.accent
@@ -177,7 +177,7 @@ Panel {
           anchors.verticalCenter: parent.verticalCenter
           spacing: Style.space(6)
           Text {
-            text: "󰡲"
+            text: "󰡳"
             color: root.toMoveCount > 0 ? root.accent : root.foreground
             font.pixelSize: Style.font.title
             font.family: root.fontFamily

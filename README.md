@@ -1,4 +1,4 @@
-# Omarchy Chess.com Plugin (󰡲)
+# Omarchy Chess.com Plugin (󰡳)
 
 A fast, responsive Chess.com status bar widget and pop-out panel for [Omarchy Linux](https://omarchy.org/).
 
