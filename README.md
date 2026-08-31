@@ -2,6 +2,8 @@
 
 A fast, responsive Chess.com status bar widget and pop-out panel for [Omarchy Linux](https://omarchy.org/).
 
+![Omarchy Chess](preview.png)
+
 ---
 
 ## ✨ Features
@@ -51,6 +53,16 @@ omarchy-shell shell rescanPlugins
 | `panelWidth` | `integer` | `390` | Pop-out panel width in shell units (320–600). |
 | `showPuzzle` | `boolean` | `true` | Show the Daily Puzzle preview banner. |
 | `pollMinutes` | `integer` | `2` | Background rating and turn poll interval in minutes. |
+
+---
+
+## 🤝 Status & Contributing
+
+This plugin is **stable, feature-complete, and ready for daily use**.
+
+Contributions, feature suggestions, and bug reports are welcome!
+- **Feature Requests & Bugs:** Open an issue on GitHub.
+- **Pull Requests (PRs):** Contributions and enhancements are welcome.
 
 ---
 
