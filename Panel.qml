@@ -20,14 +20,13 @@ Panel {
   property string currentUsername: configuredUsername
   readonly property int panelWidth: setting("panelWidth", 390)
   readonly property bool showPuzzle: setting("showPuzzle", true)
-  readonly property int pollMinutes: setting("pollMinutes", 3)
+  readonly property int pollMinutes: setting("pollMinutes", 2)
 
   // -------------------------------------------------------------------- State
   property var playerData: null
   property var statsData: null
   property var puzzleData: null
   property var activeGames: []
-  property var toMoveGames: []
   property int toMoveCount: 0
   property bool loading: false
   property string errorMessage: ""
@@ -139,7 +138,7 @@ Panel {
     tooltipText: {
       var base = root.playerData && root.playerData.username ? "Chess.com (" + root.playerData.username + ")" : "Chess.com"
       if (root.toMoveCount > 0) return base + " — " + root.toMoveCount + " move(s) to play!"
-      if (root.activeGames.length > 0) return base + " — " + root.activeGames.length + " active games (waiting on opponent)"
+      if (root.activeGames && root.activeGames.length > 0) return base + " — " + root.activeGames.length + " active games (waiting on opponent)"
       return base
     }
 
@@ -169,36 +168,35 @@ Panel {
       spacing: Style.space(12)
 
       // Header Row
-      Row {
+      Item {
         width: parent.width
-        Item {
-          width: parent.width - webappBtn.width
-          height: titleText.implicitHeight
-          anchors.verticalCenter: parent.verticalCenter
+        height: Math.max(titleText.implicitHeight, webappBtn.height)
 
-          Row {
-            spacing: Style.space(6)
-            anchors.verticalCenter: parent.verticalCenter
-            Text {
-              text: "󰡲"
-              color: root.toMoveCount > 0 ? root.accent : root.foreground
-              font.pixelSize: Style.font.title
-              font.family: root.fontFamily
-            }
-            Text {
-              id: titleText
-              text: "CHESS.COM"
-              color: root.foreground
-              font.pixelSize: Style.font.title
-              font.bold: true
-              font.family: root.fontFamily
-              font.letterSpacing: 1
-            }
+        Row {
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(6)
+          Text {
+            text: "󰡲"
+            color: root.toMoveCount > 0 ? root.accent : root.foreground
+            font.pixelSize: Style.font.title
+            font.family: root.fontFamily
+          }
+          Text {
+            id: titleText
+            text: "CHESS.COM"
+            color: root.foreground
+            font.pixelSize: Style.font.title
+            font.bold: true
+            font.family: root.fontFamily
+            font.letterSpacing: 1
           }
         }
 
         Rectangle {
           id: webappBtn
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
           width: webappText.implicitWidth + Style.space(14)
           height: Style.space(26)
           radius: Style.cornerRadius
@@ -414,14 +412,14 @@ Panel {
 
       // ------------------------------------------------ Active Games Section
       Column {
-        visible: root.activeGames.length > 0
+        visible: root.activeGames && root.activeGames.length > 0
         width: parent.width
         spacing: Style.space(6)
 
         Row {
           spacing: Style.space(6)
           Text {
-            text: root.toMoveCount > 0 ? "⚡ YOUR TURN TO PLAY (" + root.toMoveCount + ")" : "⏳ ACTIVE DAILY GAMES (" + root.activeGames.length + ")"
+            text: root.toMoveCount > 0 ? "⚡ YOUR TURN TO PLAY (" + root.toMoveCount + ")" : "⏳ ACTIVE DAILY GAMES (" + (root.activeGames ? root.activeGames.length : 0) + ")"
             color: root.toMoveCount > 0 ? root.accent : Qt.darker(root.foreground, 1.4)
             font.bold: true
             font.pixelSize: Style.font.caption
@@ -437,7 +435,7 @@ Panel {
             required property var modelData
             required property int index
             width: parent.width
-            height: Style.space(42)
+            height: Style.space(46)
             radius: Style.cornerRadius
             color: modelData.isMyTurn 
               ? (gameArea.containsMouse ? Style.hoverFillFor(root.foreground, root.accent) : Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.12))
@@ -445,66 +443,64 @@ Panel {
             border.width: 1
             border.color: modelData.isMyTurn ? root.accent : Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.1)
 
-            Row {
+            Item {
               anchors.fill: parent
               anchors.margins: Style.space(8)
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(10)
 
-              Text {
+              Row {
+                anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
-                text: modelData.amWhite ? "⚪" : "⚫"
-                font.pixelSize: Style.font.body
-              }
-
-              Column {
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(1)
-
-                Row {
-                  spacing: Style.space(6)
-                  Text {
-                    text: "vs " + modelData.opponent
-                    color: root.foreground
-                    font.bold: true
-                    font.pixelSize: Style.font.bodySmall
-                    font.family: root.fontFamily
-                  }
-                  Rectangle {
-                    visible: modelData.isMyTurn
-                    width: turnBadge.implicitWidth + Style.space(8)
-                    height: Style.space(16)
-                    radius: Style.space(3)
-                    color: root.accent
-                    anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                      id: turnBadge
-                      anchors.centerIn: parent
-                      text: "YOUR TURN"
-                      color: Color.background
-                      font.bold: true
-                      font.pixelSize: Style.font.caption
-                    }
-                  }
-                }
+                spacing: Style.space(10)
 
                 Text {
-                  text: modelData.isMyTurn ? ("Move within: " + modelData.timeLeft) : ("Opponent thinking (" + modelData.timeLeft + " left)")
-                  color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.6)
-                  font.pixelSize: Style.font.caption
-                  font.family: root.fontFamily
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: modelData.amWhite ? "⚪" : "⚫"
+                  font.pixelSize: Style.font.body
+                }
+
+                Column {
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(1)
+
+                  Row {
+                    spacing: Style.space(6)
+                    Text {
+                      text: "vs " + modelData.opponent
+                      color: root.foreground
+                      font.bold: true
+                      font.pixelSize: Style.font.bodySmall
+                      font.family: root.fontFamily
+                    }
+                    Rectangle {
+                      visible: modelData.isMyTurn
+                      width: turnBadge.implicitWidth + Style.space(8)
+                      height: Style.space(16)
+                      radius: Style.space(3)
+                      color: root.accent
+                      anchors.verticalCenter: parent.verticalCenter
+                      Text {
+                        id: turnBadge
+                        anchors.centerIn: parent
+                        text: "YOUR TURN"
+                        color: Color.background
+                        font.bold: true
+                        font.pixelSize: Style.font.caption
+                      }
+                    }
+                  }
+
+                  Text {
+                    text: modelData.isMyTurn ? ("Move within: " + modelData.timeLeft) : ("Opponent thinking (" + modelData.timeLeft + " left)")
+                    color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.6)
+                    font.pixelSize: Style.font.caption
+                    font.family: root.fontFamily
+                  }
                 }
               }
 
-              Item {
-                Layout.fillWidth: true
-                width: parent.width - 240
-                height: 1
-              }
-
               Text {
-                anchors.verticalCenter: parent.verticalCenter
                 anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 text: modelData.isMyTurn ? "Play 󰐊" : "View 󰒭"
                 color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.5)
                 font.bold: modelData.isMyTurn
