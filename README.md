@@ -31,13 +31,13 @@ A fast, responsive Chess.com status bar widget and pop-out panel for [Omarchy Li
 Install and enable with a single command:
 
 ```bash
-omarchy plugin add https://github.com/<your-username>/omarchy-chessdotcom --enable
+omarchy plugin add https://github.com/jasonpatel/omarchy-chessdotcom --enable
 ```
 
 Or clone manually:
 
 ```bash
-git clone https://github.com/<your-username>/omarchy-chessdotcom.git ~/.config/omarchy/plugins/jason.chess
+git clone https://github.com/jasonpatel/omarchy-chessdotcom.git ~/.config/omarchy/plugins/jason.chess
 omarchy-shell shell rescanPlugins
 ```
 

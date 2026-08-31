@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Jason",
   "description": "Chess.com in your bar: live ratings, daily tactics puzzle, and quick play launchers",
-  "homepage": "https://github.com/omarchy/omarchy",
+  "homepage": "https://github.com/jasonpatel/omarchy-chessdotcom",
   "license": "MIT",
   "kinds": [
     "bar-widget"
