@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "jason.chess",
+  "name": "Chess.com",
+  "version": "1.0.0",
+  "author": "Jason",
+  "description": "Chess.com in your bar: live ratings, daily tactics puzzle, and quick play launchers",
+  "homepage": "https://github.com/omarchy/omarchy",
+  "license": "MIT",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Chess.com",
+    "description": "Live ratings, daily puzzle, and quick play launchers",
+    "category": "Games",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "username": "",
+      "panelWidth": 380,
+      "showPuzzle": true,
+      "pollMinutes": 10
+    },
+    "schema": [
+      {
+        "key": "username",
+        "type": "string",
+        "label": "Chess.com Username",
+        "defaultValue": "",
+        "description": "Your public Chess.com username. Leave blank to browse daily puzzles or search any player."
+      },
+      {
+        "key": "panelWidth",
+        "type": "integer",
+        "label": "Panel Width",
+        "min": 320,
+        "max": 600,
+        "step": 20,
+        "defaultValue": 380,
+        "description": "Width of the pop-out panel in shell spacing units."
+      },
+      {
+        "key": "showPuzzle",
+        "type": "boolean",
+        "label": "Show Daily Puzzle",
+        "defaultValue": true,
+        "description": "Display Chess.com's Daily Tactical Puzzle in the popup panel."
+      },
+      {
+        "key": "pollMinutes",
+        "type": "integer",
+        "label": "Refresh Interval",
+        "min": 2,
+        "max": 60,
+        "step": 1,
+        "defaultValue": 10,
+        "description": "How often in minutes to refresh your live ratings in the background."
+      }
+    ]
+  }
+}
