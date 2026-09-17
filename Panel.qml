@@ -33,20 +33,124 @@ Panel {
   property bool editingUser: false
   property string userInputValue: ""
 
+  readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/omarchy-chess"
+  property string localAvatarPath: ""
+  property string localPuzzlePath: ""
+
+  Process {
+    id: ensureCacheDirProc
+    command: ["mkdir", "-p", root.cacheDir]
+    running: false
+  }
+
+  Process {
+    id: webappLauncher
+    command: []
+    running: false
+  }
+
+  Process {
+    id: avatarDownloadProc
+    property string targetPath: ""
+    command: []
+    running: false
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode === 0 && targetPath !== "") {
+        root.localAvatarPath = targetPath
+      }
+    }
+  }
+
+  Process {
+    id: puzzleDownloadProc
+    property string targetPath: ""
+    command: []
+    running: false
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode === 0 && targetPath !== "") {
+        root.localPuzzlePath = targetPath
+      }
+    }
+  }
+
+  function fetchAvatarImage(rawUrl, username) {
+    var safeUrl = Model.validateImageUrl(rawUrl)
+    if (!safeUrl || !username) {
+      localAvatarPath = ""
+      return
+    }
+    var cleanUser = Model.cleanUsername(username)
+    if (!cleanUser) {
+      localAvatarPath = ""
+      return
+    }
+    var dest = root.cacheDir + "/avatar_" + cleanUser + ".png"
+    avatarDownloadProc.targetPath = dest
+    avatarDownloadProc.command = [
+      "curl",
+      "--proto", "=https",
+      "--max-filesize", "2097152",
+      "--max-time", "10",
+      "--max-redirs", "3",
+      "-sSf",
+      "-o", dest,
+      safeUrl
+    ]
+    avatarDownloadProc.running = true
+  }
+
+  function fetchPuzzleImage(rawUrl) {
+    var safeUrl = Model.validateImageUrl(rawUrl)
+    if (!safeUrl) {
+      localPuzzlePath = ""
+      return
+    }
+    var today = new Date().toISOString().slice(0, 10)
+    var dest = root.cacheDir + "/puzzle_" + today + ".png"
+    puzzleDownloadProc.targetPath = dest
+    puzzleDownloadProc.command = [
+      "curl",
+      "--proto", "=https",
+      "--max-filesize", "2097152",
+      "--max-time", "10",
+      "--max-redirs", "3",
+      "-sSf",
+      "-o", dest,
+      safeUrl
+    ]
+    puzzleDownloadProc.running = true
+  }
+
+  function launchUrl(url) {
+    var safeUrl = Model.validateChessUrl(url)
+    if (!safeUrl) {
+      safeUrl = "https://www.chess.com/"
+    }
+    webappLauncher.command = ["omarchy-launch-or-focus-webapp", "Chess", safeUrl]
+    webappLauncher.running = true
+    root.close()
+  }
+
   function refreshAll() {
     errorMessage = ""
     loading = true
-    var targetUser = currentUsername.trim()
+    var targetUser = Model.cleanUsername(currentUsername)
 
     if (targetUser.length > 0) {
       Model.fetchPlayer(targetUser, function(err, player) {
         if (err) {
           errorMessage = "Player not found"
           playerData = null
+          localAvatarPath = ""
           loading = false
           return
         }
         playerData = player
+        if (player && player.avatar) {
+          root.fetchAvatarImage(player.avatar, targetUser)
+        } else {
+          root.localAvatarPath = ""
+        }
         Model.fetchStats(targetUser, function(errStats, stats) {
           if (!errStats) statsData = stats
         })
@@ -70,12 +174,16 @@ Panel {
       statsData = null
       activeGames = []
       toMoveCount = 0
+      localAvatarPath = ""
       loading = false
     }
 
     if (showPuzzle) {
       Model.fetchPuzzle(function(err, pz) {
-        if (!err) puzzleData = pz
+        if (!err && pz) {
+          puzzleData = pz
+          if (pz.image) root.fetchPuzzleImage(pz.image)
+        }
       })
     }
   }
@@ -87,11 +195,15 @@ Panel {
   }
 
   Component.onCompleted: {
-    if (currentUsername !== "") {
+    ensureCacheDirProc.running = true
+    if (Model.cleanUsername(currentUsername) !== "") {
       refreshAll()
     } else if (showPuzzle) {
       Model.fetchPuzzle(function(err, pz) {
-        if (!err) puzzleData = pz
+        if (!err && pz) {
+          puzzleData = pz
+          if (pz.image) root.fetchPuzzleImage(pz.image)
+        }
       })
     }
   }
@@ -100,17 +212,11 @@ Panel {
     interval: Math.max(1, root.pollMinutes) * 60 * 1000
     running: true
     repeat: true
-    onTriggered: if (root.currentUsername !== "") root.refreshAll()
-  }
-
-  function launchUrl(url) {
-    if (!root.bar) return
-    root.bar.run("omarchy-launch-or-focus-webapp Chess '" + url + "'")
-    root.close()
+    onTriggered: if (Model.cleanUsername(root.currentUsername) !== "") root.refreshAll()
   }
 
   function saveUsername(name) {
-    var clean = name.trim().toLowerCase()
+    var clean = Model.cleanUsername(name)
     currentUsername = clean
     editingUser = false
     var entry = { id: root.moduleName }
@@ -136,7 +242,8 @@ Panel {
     active: root.toMoveCount > 0
     activeColor: root.accent
     tooltipText: {
-      var base = root.playerData && root.playerData.username ? "Chess.com (" + root.playerData.username + ")" : "Chess.com"
+      var user = root.playerData && root.playerData.username ? root.playerData.username : ""
+      var base = user ? ("Chess.com (" + user + ")") : "Chess.com"
       if (root.toMoveCount > 0) return base + " — " + root.toMoveCount + " move(s) to play!"
       if (root.activeGames && root.activeGames.length > 0) return base + " — " + root.activeGames.length + " active games (waiting on opponent)"
       return base
@@ -178,6 +285,7 @@ Panel {
           spacing: Style.space(6)
           Text {
             text: "♟"
+            textFormat: Text.PlainText
             color: root.toMoveCount > 0 ? root.accent : root.foreground
             font.pixelSize: Style.font.title
             font.family: root.fontFamily
@@ -185,6 +293,7 @@ Panel {
           Text {
             id: titleText
             text: "CHESS.COM"
+            textFormat: Text.PlainText
             color: root.foreground
             font.pixelSize: Style.font.title
             font.bold: true
@@ -210,12 +319,14 @@ Panel {
             spacing: Style.space(4)
             Text {
               text: "Open App"
+              textFormat: Text.PlainText
               color: root.foreground
               font.pixelSize: Style.font.bodySmall
               font.family: root.fontFamily
             }
             Text {
               text: "󰒭"
+              textFormat: Text.PlainText
               color: root.accent
               font.pixelSize: Style.font.bodySmall
               font.family: root.fontFamily
@@ -270,6 +381,7 @@ Panel {
               Text {
                 visible: userInput.text === ""
                 text: "Enter Chess.com username..."
+                textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.8)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -292,6 +404,7 @@ Panel {
             Text {
               anchors.centerIn: parent
               text: "Save"
+              textFormat: Text.PlainText
               color: Color.background
               font.bold: true
               font.family: root.fontFamily
@@ -328,15 +441,20 @@ Panel {
 
               Image {
                 anchors.fill: parent
-                source: root.playerData && root.playerData.avatar ? root.playerData.avatar : ""
+                source: root.localAvatarPath ? ("file://" + root.localAvatarPath) : ""
                 fillMode: Image.PreserveAspectCrop
-                visible: status === Image.Ready
+                sourceSize.width: 80
+                sourceSize.height: 80
+                asynchronous: true
+                cache: true
+                visible: status === Image.Ready && root.localAvatarPath !== ""
               }
 
               Text {
-                visible: !(root.playerData && root.playerData.avatar)
+                visible: !root.localAvatarPath
                 anchors.centerIn: parent
                 text: "♟"
+                textFormat: Text.PlainText
                 font.pixelSize: Style.font.title
                 color: root.foreground
               }
@@ -359,6 +477,7 @@ Panel {
                     id: titleLabel
                     anchors.centerIn: parent
                     text: root.playerData && root.playerData.title ? root.playerData.title : ""
+                    textFormat: Text.PlainText
                     color: "#ffffff"
                     font.pixelSize: Style.font.caption
                     font.bold: true
@@ -367,6 +486,7 @@ Panel {
 
                 Text {
                   text: root.playerData && root.playerData.username ? root.playerData.username : ""
+                  textFormat: Text.PlainText
                   color: root.foreground
                   font.bold: true
                   font.pixelSize: Style.font.body
@@ -376,6 +496,7 @@ Panel {
 
               Text {
                 text: root.playerData && root.playerData.name ? root.playerData.name : (root.playerData && root.playerData.location ? root.playerData.location : "Active Player")
+                textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.5)
                 font.pixelSize: Style.font.caption
                 font.family: root.fontFamily
@@ -394,6 +515,7 @@ Panel {
             Text {
               anchors.centerIn: parent
               text: "󰏫"
+              textFormat: Text.PlainText
               color: Qt.darker(root.foreground, 1.4)
               font.pixelSize: Style.font.body
               font.family: root.fontFamily
@@ -420,6 +542,7 @@ Panel {
           spacing: Style.space(6)
           Text {
             text: root.toMoveCount > 0 ? "⚡ YOUR TURN TO PLAY (" + root.toMoveCount + ")" : "⏳ ACTIVE DAILY GAMES (" + (root.activeGames ? root.activeGames.length : 0) + ")"
+            textFormat: Text.PlainText
             color: root.toMoveCount > 0 ? root.accent : Qt.darker(root.foreground, 1.4)
             font.bold: true
             font.pixelSize: Style.font.caption
@@ -455,6 +578,7 @@ Panel {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   text: modelData.amWhite ? "⚪" : "⚫"
+                  textFormat: Text.PlainText
                   font.pixelSize: Style.font.body
                 }
 
@@ -466,6 +590,7 @@ Panel {
                     spacing: Style.space(6)
                     Text {
                       text: "vs " + modelData.opponent
+                      textFormat: Text.PlainText
                       color: root.foreground
                       font.bold: true
                       font.pixelSize: Style.font.bodySmall
@@ -482,6 +607,7 @@ Panel {
                         id: turnBadge
                         anchors.centerIn: parent
                         text: "YOUR TURN"
+                        textFormat: Text.PlainText
                         color: Color.background
                         font.bold: true
                         font.pixelSize: Style.font.caption
@@ -491,6 +617,7 @@ Panel {
 
                   Text {
                     text: modelData.isMyTurn ? ("Move within: " + modelData.timeLeft) : ("Opponent thinking (" + modelData.timeLeft + " left)")
+                    textFormat: Text.PlainText
                     color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.6)
                     font.pixelSize: Style.font.caption
                     font.family: root.fontFamily
@@ -502,6 +629,7 @@ Panel {
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
                 text: modelData.isMyTurn ? "Play 󰐊" : "View 󰒭"
+                textFormat: Text.PlainText
                 color: modelData.isMyTurn ? root.accent : Qt.darker(root.foreground, 1.5)
                 font.bold: modelData.isMyTurn
                 font.pixelSize: Style.font.bodySmall
@@ -542,9 +670,10 @@ Panel {
             Row {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(4)
-              Text { text: "⏱"; font.pixelSize: Style.font.bodySmall }
+              Text { text: "⏱"; textFormat: Text.PlainText; font.pixelSize: Style.font.bodySmall }
               Text {
                 text: "RAPID"
+                textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.4)
                 font.pixelSize: Style.font.caption
                 font.bold: true
@@ -555,6 +684,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: Model.formatRating(root.statsData && root.statsData.chess_rapid && root.statsData.chess_rapid.last ? root.statsData.chess_rapid.last.rating : null)
+              textFormat: Text.PlainText
               color: root.foreground
               font.bold: true
               font.pixelSize: Style.font.title
@@ -563,6 +693,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: Model.formatRecord(root.statsData && root.statsData.chess_rapid ? root.statsData.chess_rapid.record : null)
+              textFormat: Text.PlainText
               color: Qt.darker(root.foreground, 1.6)
               font.pixelSize: Style.font.caption
               font.family: root.fontFamily
@@ -593,9 +724,10 @@ Panel {
             Row {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(4)
-              Text { text: "📅"; font.pixelSize: Style.font.bodySmall }
+              Text { text: "📅"; textFormat: Text.PlainText; font.pixelSize: Style.font.bodySmall }
               Text {
                 text: "DAILY"
+                textFormat: Text.PlainText
                 color: Qt.darker(root.foreground, 1.4)
                 font.pixelSize: Style.font.caption
                 font.bold: true
@@ -606,6 +738,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: Model.formatRating(root.statsData && root.statsData.chess_daily && root.statsData.chess_daily.last ? root.statsData.chess_daily.last.rating : null)
+              textFormat: Text.PlainText
               color: root.foreground
               font.bold: true
               font.pixelSize: Style.font.title
@@ -614,6 +747,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: Model.formatRecord(root.statsData && root.statsData.chess_daily ? root.statsData.chess_daily.record : null)
+              textFormat: Text.PlainText
               color: Qt.darker(root.foreground, 1.6)
               font.pixelSize: Style.font.caption
               font.family: root.fontFamily
@@ -654,8 +788,12 @@ Panel {
 
             Image {
               anchors.fill: parent
-              source: root.puzzleData && root.puzzleData.image ? root.puzzleData.image : ""
+              source: root.localPuzzlePath ? ("file://" + root.localPuzzlePath) : ""
               fillMode: Image.PreserveAspectFit
+              sourceSize.width: 256
+              sourceSize.height: 256
+              asynchronous: true
+              cache: true
             }
           }
 
@@ -665,9 +803,10 @@ Panel {
 
             Row {
               spacing: Style.space(4)
-              Text { text: "🧩"; font.pixelSize: Style.font.caption }
+              Text { text: "🧩"; textFormat: Text.PlainText; font.pixelSize: Style.font.caption }
               Text {
                 text: "DAILY PUZZLE"
+                textFormat: Text.PlainText
                 color: root.accent
                 font.bold: true
                 font.pixelSize: Style.font.caption
@@ -678,6 +817,7 @@ Panel {
 
             Text {
               text: root.puzzleData && root.puzzleData.title ? root.puzzleData.title : "Daily Tactic"
+              textFormat: Text.PlainText
               color: root.foreground
               font.bold: true
               font.pixelSize: Style.font.bodySmall
@@ -687,6 +827,7 @@ Panel {
 
             Text {
               text: "Click to solve on Chess.com"
+              textFormat: Text.PlainText
               color: Qt.darker(root.foreground, 1.5)
               font.pixelSize: Style.font.caption
               font.family: root.fontFamily
@@ -719,6 +860,7 @@ Panel {
           Text {
             anchors.centerIn: parent
             text: "⚡ 3 min"
+            textFormat: Text.PlainText
             color: root.foreground
             font.pixelSize: Style.font.caption
             font.bold: true
@@ -745,6 +887,7 @@ Panel {
           Text {
             anchors.centerIn: parent
             text: "⏱ 10 min"
+            textFormat: Text.PlainText
             color: root.foreground
             font.pixelSize: Style.font.caption
             font.bold: true
@@ -771,6 +914,7 @@ Panel {
           Text {
             anchors.centerIn: parent
             text: "🧩 Tactics"
+            textFormat: Text.PlainText
             color: root.foreground
             font.pixelSize: Style.font.caption
             font.bold: true
@@ -797,6 +941,7 @@ Panel {
           Text {
             anchors.centerIn: parent
             text: "🤖 Bots"
+            textFormat: Text.PlainText
             color: root.foreground
             font.pixelSize: Style.font.caption
             font.bold: true

@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
@@ -9,6 +11,12 @@ BarWidget {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  Process {
+    id: launcher
+    command: ["omarchy-launch-or-focus-webapp", "Chess", "https://www.chess.com/"]
+    running: false
+  }
+
   WidgetButton {
     id: button
     anchors.fill: parent
@@ -17,8 +25,7 @@ BarWidget {
     horizontalMargin: 6
     tooltipText: "Chess.com"
     onPressed: function(mouseButton) {
-      if (!root.bar) return
-      root.bar.run("omarchy-launch-or-focus-webapp Chess https://www.chess.com/")
+      launcher.running = true
     }
   }
 }
